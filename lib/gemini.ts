@@ -22,8 +22,8 @@ Your job is to read a raw piece of project communication (an email thread, chat 
 
 STRICT RULES:
 1. Only extract information that is explicitly present in the text. NEVER invent names, dates, tasks, or decisions.
-2. If an assignee is not clearly stated, set "assignee" to null. Do not guess based on role.
-3. If a deadline is not clearly stated, set "deadline" to null. Do not infer a date that isn't in the text.
+2. If an assignee is not clearly stated, set "assignee" to an empty string (""). Do not guess based on role.
+3. If a deadline is not clearly stated, set "deadline" to an empty string (""). Do not infer a date that isn't in the text.
 4. Classify each decision's status carefully:
    - "approved": the text shows clear, confirmed approval.
    - "pending": someone proposed something but no confirmation yet.
@@ -34,7 +34,7 @@ STRICT RULES:
    When a decision changes (e.g. a material or plan originally chosen is later swapped for another), record it with status "changed" AND add a matching entry to "changes" describing the previous value, the new value, and the reason. For example: "Tile 312 selected" -> supplier reports it unavailable -> "Tile 315 proposed" -> client approves Tile 315. This whole arc should be represented as a decision (status "changed") plus a corresponding "changes" entry — not as two unrelated, disconnected decisions.
 5. Every decision, action item, issue, change, person, and deadline MUST include a "sourceReference": a short verbatim excerpt (under ~30 words) copied directly from the input text that justifies the extraction. Never fabricate or paraphrase-as-if-verbatim a source reference — if you cannot point to real text supporting an item, do not include that item at all. Preserve the original meaning of the communication; do not editorialize.
 6. Keep "summary" concise (3-6 sentences) and neutral — describe what was discussed, not your opinion.
-7. Extract "people" as the distinct individuals mentioned (name + role if stated). Only assign a role if the text states or clearly implies it.
+7. Extract "people" as the distinct individuals mentioned (name + role if stated). Only assign a role if the text states or clearly implies it; otherwise set "role" to an empty string ("").
 8. Extract "deadlines" as a flat list of every date/deadline mentioned, even ones already referenced inside an action item.
 9. Output ONLY valid JSON matching the schema below. No markdown fences, no commentary, no trailing text.
 
@@ -42,10 +42,10 @@ Return JSON with exactly this shape:
 {
   "summary": "string",
   "decisions": [{ "title": "string", "description": "string", "status": "approved|pending|rejected|changed|unclear", "people": ["string"], "sourceReference": "string" }],
-  "actionItems": [{ "task": "string", "assignee": "string|null", "deadline": "string|null", "priority": "high|medium|low|unclear", "status": "pending|completed|unclear", "sourceReference": "string" }],
+  "actionItems": [{ "task": "string", "assignee": "string", "deadline": "string", "priority": "high|medium|low|unclear", "status": "pending|completed|unclear", "sourceReference": "string" }],
   "issues": [{ "title": "string", "description": "string", "status": "open|resolved|unclear", "sourceReference": "string" }],
   "changes": [{ "item": "string", "previousValue": "string", "newValue": "string", "reason": "string", "sourceReference": "string" }],
-  "people": [{ "name": "string", "role": "string|null", "sourceReference": "string" }],
+  "people": [{ "name": "string", "role": "string", "sourceReference": "string" }],
   "deadlines": [{ "description": "string", "date": "string", "relatedTo": "string", "sourceReference": "string" }]
 }
 
@@ -79,8 +79,8 @@ const GEMINI_RESPONSE_SCHEMA = {
         type: "object",
         properties: {
           task: { type: "string" },
-          assignee: { type: ["string", "null"] },
-          deadline: { type: ["string", "null"] },
+          assignee: { type: "string" },
+          deadline: { type: "string" },
           priority: { type: "string", enum: ["high", "medium", "low", "unclear"] },
           status: { type: "string", enum: ["pending", "completed", "unclear"] },
           sourceReference: { type: "string" },
@@ -121,7 +121,7 @@ const GEMINI_RESPONSE_SCHEMA = {
         type: "object",
         properties: {
           name: { type: "string" },
-          role: { type: ["string", "null"] },
+          role: { type: "string" },
           sourceReference: { type: "string" },
         },
         required: ["name", "role", "sourceReference"],

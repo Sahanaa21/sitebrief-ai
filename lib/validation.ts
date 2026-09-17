@@ -35,8 +35,8 @@ export const DecisionSchema = z.object({
 
 export const ActionItemSchema = z.object({
   task: z.string().trim().min(1).max(200),
-  assignee: z.string().trim().min(1).max(80).nullable().default(null),
-  deadline: z.string().trim().min(1).max(60).nullable().default(null),
+  assignee: z.string().trim().max(80),
+  deadline: z.string().trim().max(60),
   priority: ActionPriorityEnum,
   status: ActionStatusEnum,
   sourceReference,
@@ -59,7 +59,7 @@ export const ChangeSchema = z.object({
 
 export const PersonSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  role: z.string().trim().min(1).max(80).nullable().default(null),
+  role: z.string().trim().max(80),
   sourceReference,
 });
 
