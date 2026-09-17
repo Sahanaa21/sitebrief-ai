@@ -51,7 +51,11 @@ export async function POST(req: NextRequest) {
       );
     }
     if (err instanceof GeminiRequestError) {
-      const status = err.status === 429 ? 429 : 502;
+      console.error("[api/analyze] Gemini request failed", {
+        status: err.status,
+        message: err.message,
+      });
+      const status = err.status === 429 || err.status === 503 ? err.status : 502;
       return NextResponse.json({ error: err.message, code: "GEMINI_REQUEST_FAILED" }, { status });
     }
     if (err instanceof GeminiParseError) {

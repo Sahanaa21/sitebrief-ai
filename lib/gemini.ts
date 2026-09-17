@@ -5,6 +5,8 @@ import { AnalysisResultSchema, type AnalysisResultInput } from "./validation";
 
 const GEMINI_MODEL = "gemini-3.8-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const MAX_GEMINI_RETRIES = 2;
+const TRANSIENT_GEMINI_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 export class GeminiConfigError extends Error {}
 export class GeminiRequestError extends Error {
@@ -151,6 +153,11 @@ function extractJsonText(rawText: string): string {
   return candidate.trim();
 }
 
+function retryDelayMs(retryNumber: number): number {
+  const exponentialDelay = 250 * 2 ** (retryNumber - 1);
+  return exponentialDelay + Math.floor(Math.random() * 100);
+}
+
 export function isGeminiConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 0);
 }
@@ -189,25 +196,39 @@ export async function analyzeWithGemini(text: string): Promise<AnalysisResultInp
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(GEMINI_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // Gemini 3.8 Flash authenticates via this header — the key must never be
-        // put in the URL query string.
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify(body),
-      // Hackathon-scale documents are short; a generous but bounded timeout
-      // keeps the loading state honest without hanging forever.
-      signal: AbortSignal.timeout(30000),
-    });
-  } catch (err) {
-    throw new GeminiRequestError(
-      "Could not reach the Gemini API. Check your network connection or try again."
-    );
+  let response: Response | undefined;
+  for (let attempt = 0; attempt <= MAX_GEMINI_RETRIES; attempt += 1) {
+    try {
+      response = await fetch(GEMINI_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Gemini 3.8 Flash authenticates via this header — the key must never be
+          // put in the URL query string.
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify(body),
+        // Hackathon-scale documents are short; a generous but bounded timeout
+        // keeps the loading state honest without hanging forever.
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!TRANSIENT_GEMINI_STATUSES.has(response.status) || attempt === MAX_GEMINI_RETRIES) {
+        break;
+      }
+    } catch {
+      if (attempt === MAX_GEMINI_RETRIES) {
+        throw new GeminiRequestError(
+          "Could not reach the Gemini API after 3 attempts. Check your network connection or try again."
+        );
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs(attempt + 1)));
+  }
+
+  if (!response) {
+    throw new GeminiRequestError("Could not reach the Gemini API. Check your network connection or try again.");
   }
 
   if (response.status === 429) {
